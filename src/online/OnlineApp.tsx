@@ -4,6 +4,8 @@ import { buildWinnerExplanations, formatCard, type BotPersonality, type Card, ty
 import type { ClientMessage, LobbyRoom, OnlineUser, ReplayDetail, ReplaySummary, RoomView, ServerMessage } from './protocol'
 import { VoiceControls } from '../voice/VoiceControls'
 import { useRoomVoice } from '../voice/useRoomVoice'
+import { QuickMessageControls } from './QuickMessageControls'
+import { QUICK_MESSAGE_AUDIO_ROOT, QUICK_MESSAGE_BY_ID, type QuickMessageId } from './quickMessages'
 import './online.css'
 
 const TOKEN_KEY = 'river-ace-online-token'
@@ -43,7 +45,9 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
   const [reportOpen, setReportOpen] = useState(false)
   const [reportTarget, setReportTarget] = useState('')
   const [reportReason, setReportReason] = useState('')
+  const [quickMessages, setQuickMessages] = useState<Record<string, { messageId: QuickMessageId; sentAt: number }>>({})
   const socketRef = useRef<WebSocket | null>(null)
+  const quickMessageTimers = useRef(new Map<string, number>())
 
   const send = (message: ClientMessage) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) return setError('连接尚未恢复，请稍后重试')
@@ -69,6 +73,22 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
         else if (message.type === 'leftRoom') setRoom(null)
         else if (message.type === 'error') setError(message.message)
         else if (message.type === 'notice') { setNotice(message.message); setReportOpen(false); setReportReason('') }
+        else if (message.type === 'quickMessage') {
+          const quickMessage = QUICK_MESSAGE_BY_ID[message.messageId]
+          setQuickMessages((previous) => ({ ...previous, [message.userId]: { messageId: message.messageId, sentAt: message.sentAt } }))
+          const previousTimer = quickMessageTimers.current.get(message.userId)
+          if (previousTimer) window.clearTimeout(previousTimer)
+          quickMessageTimers.current.set(message.userId, window.setTimeout(() => {
+            setQuickMessages((previous) => {
+              if (previous[message.userId]?.sentAt !== message.sentAt) return previous
+              const next = { ...previous }
+              delete next[message.userId]
+              return next
+            })
+            quickMessageTimers.current.delete(message.userId)
+          }, 4_000))
+          void new Audio(`${QUICK_MESSAGE_AUDIO_ROOT}/${quickMessage.audioFile}`).play().catch(() => undefined)
+        }
       }
       socket.onclose = (event) => {
         if (socketRef.current === socket) socketRef.current = null
@@ -87,6 +107,8 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
       if (retryTimer) window.clearTimeout(retryTimer)
       socketRef.current?.close()
       socketRef.current = null
+      for (const timer of quickMessageTimers.current.values()) window.clearTimeout(timer)
+      quickMessageTimers.current.clear()
     }
   }, [token])
 
@@ -168,7 +190,7 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
   if (room) return <OnlineRoom room={room} user={user} token={token} remaining={remaining} raiseTo={raiseTo} setRaiseTo={setRaiseTo}
     send={send} connected={connected} error={error} notice={notice} onBack={() => send({ type: 'leaveRoom' })}
     reportOpen={reportOpen} setReportOpen={setReportOpen} reportTarget={reportTarget} setReportTarget={setReportTarget}
-    reportReason={reportReason} setReportReason={setReportReason} />
+    reportReason={reportReason} setReportReason={setReportReason} quickMessages={quickMessages} />
 
   return (
     <main className="online-shell">
@@ -225,6 +247,7 @@ interface OnlineRoomProps {
   send: (message: ClientMessage) => void; connected: boolean; error: string; notice: string; onBack: () => void
   reportOpen: boolean; setReportOpen: (value: boolean) => void; reportTarget: string; setReportTarget: (value: string) => void
   reportReason: string; setReportReason: (value: string) => void
+  quickMessages: Record<string, { messageId: QuickMessageId; sentAt: number }>
 }
 
 function OnlineRoom(props: OnlineRoomProps) {
@@ -259,12 +282,14 @@ function OnlineRoom(props: OnlineRoomProps) {
         <button onClick={() => navigator.clipboard.writeText(invite).then(() => undefined)}>复制邀请链接</button>
         <button onClick={props.onBack}>离开房间</button></div></header>
     <VoiceControls voice={voice} canPublish={room.viewerRole === 'player'} />
+    <QuickMessageControls disabled={!props.connected || room.viewerRole !== 'player'} onSend={(messageId) => send({ type: 'quickMessage', messageId })} />
     {(props.error || props.notice) && <div className={`online-alert ${props.error ? 'error' : ''}`}>{props.error || props.notice}</div>}
     {room.status === 'waiting' || !game ? <section className="waiting-room online-panel">
       <div><p className="eyebrow">WAITING ROOM</p><h2>等待玩家加入</h2><p>邀请链接：<code>{invite}</code></p></div>
       <div className="waiting-seats">{Array.from({ length: room.maxPlayers }, (_, seat) => {
         const player = room.players[seat]
         return <article key={seat} className={`${player ? 'occupied' : ''} ${player && voice.speakingIds.has(player.id) ? 'speaking' : ''}`}><b>{seat + 1}</b><strong>{player ? `${player.isBot ? '🤖 ' : ''}${player.name}` : '空座位'}</strong>
+          {player && props.quickMessages[player.id] && <span className="quick-message-bubble waiting-bubble" key={props.quickMessages[player.id].sentAt}>{QUICK_MESSAGE_BY_ID[props.quickMessages[player.id].messageId].text}</span>}
           <small>{player ? (player.isBot ? PERSONALITIES[player.personality ?? 'balanced'].description : player.connected ? '在线' : '断线') : '等待加入'}</small>
           {player?.isBot && room.hostId === user.id && <button className="remove-bot" onClick={() => send({ type: 'removeBot', botId: player.id })}>移除</button>}</article>
       })}</div>
@@ -282,6 +307,7 @@ function OnlineRoom(props: OnlineRoomProps) {
             : <span className="card empty" key={index} />)}</div>
           <strong>底池 {game.players.reduce((sum, player) => sum + player.totalContribution, 0)}</strong></div>
         {game.players.map((player, index) => <article key={player.id} className={`seat ${player.seat === game.currentPlayerSeat ? 'current' : ''} ${player.folded ? 'folded' : ''} ${winnerIds.has(player.id) ? 'winner' : ''} ${voice.speakingIds.has(player.id) ? 'speaking' : ''}`} style={seatStyles[index]}>
+          {props.quickMessages[player.id] && <span className="quick-message-bubble" key={props.quickMessages[player.id].sentAt}>{QUICK_MESSAGE_BY_ID[props.quickMessages[player.id].messageId].text}</span>}
           <div className="hole-cards">{player.hasCards ? [0, 1].map((cardIndex) => <CardView key={cardIndex} card={player.holeCards[cardIndex]}
             hidden={!player.holeCards[cardIndex]} winner={winnerIds.has(player.id)} highlighted={player.holeCards[cardIndex] ? bestKeys.has(formatCard(player.holeCards[cardIndex])) : false} />) : null}</div>
           <div className="seat-name"><strong>{player.isBot ? '🤖 ' : ''}{player.name}{player.id === user.id ? '（你）' : ''}</strong><span>{player.chips}</span></div>

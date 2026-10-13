@@ -80,6 +80,16 @@ try {
   watcher2.send({ type: 'spectateRoom', roomId, password: 'room-pass' })
   await Promise.all([alice.wait(() => alice.room?.players.length === 4 && alice.room.spectators === 2), bob.wait(() => bob.room?.players.length === 4), watcher.wait(() => watcher.room?.viewerRole === 'spectator')])
 
+  alice.send({ type: 'quickMessage', messageId: 'shine-shoes' })
+  await Promise.all([bob, watcher].map((client) => client.wait(() => client.messages.some((message) =>
+    message.type === 'quickMessage' && message.userId === aliceAccount.user.id && message.messageId === 'shine-shoes',
+  ))))
+  alice.send({ type: 'quickMessage', messageId: 'check-cards' })
+  alice.send({ type: 'quickMessage', messageId: 'cards-ok' })
+  alice.send({ type: 'quickMessage', messageId: 'great-hand' })
+  await bob.wait(() => bob.messages.filter((message) => message.type === 'quickMessage' && message.userId === aliceAccount.user.id).length === 3)
+  await alice.wait(() => alice.messages.some((message) => message.type === 'error' && message.message.includes('快捷语连发冷却中')))
+
   const voiceHeaders = (token: string) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' })
   const playerVoiceResponse = await fetch(`${base}/api/voice/token`, { method: 'POST', headers: voiceHeaders(aliceAccount.token), body: JSON.stringify({ roomId }) })
   const playerVoice = await playerVoiceResponse.json() as { token: string; url: string; canPublish: boolean; roomName: string }

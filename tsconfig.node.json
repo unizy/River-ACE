@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "server/**/*.ts", "src/game/**/*.ts", "src/ai/**/*.ts", "src/online/protocol.ts"]
+  "include": ["vite.config.ts", "server/**/*.ts", "src/game/**/*.ts", "src/ai/**/*.ts", "src/online/protocol.ts", "src/online/quickMessages.ts"]
 }

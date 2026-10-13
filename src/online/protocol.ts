@@ -1,4 +1,5 @@
 import type { BotPersonality, Card, GameConfig, LegalActions, PlayerAction, Pot, Street, WinnerRecord } from '../game'
+import type { QuickMessageId } from './quickMessages'
 
 export interface OnlineUser {
   id: string
@@ -102,6 +103,7 @@ export type ClientMessage =
   | { type: 'addBot'; personality: BotPersonality }
   | { type: 'removeBot'; botId: string }
   | { type: 'action'; action: PlayerAction }
+  | { type: 'quickMessage'; messageId: QuickMessageId }
   | { type: 'report'; targetUserId: string; reason: string }
   | { type: 'ping'; sentAt: number }
 
@@ -112,5 +114,6 @@ export type ServerMessage =
   | { type: 'leftRoom' }
   | { type: 'error'; message: string }
   | { type: 'notice'; message: string }
+  | { type: 'quickMessage'; userId: string; messageId: QuickMessageId; sentAt: number }
   | { type: 'pong'; sentAt: number }
 

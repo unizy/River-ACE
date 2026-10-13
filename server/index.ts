@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from 'ws'
 import { createBotView, decideBotAction, PERSONALITIES } from '../src/ai/index'
 import { createGame, getLegalActions, performAction, startHand, startNextHand, type BotPersonality, type GameState, type PlayerAction } from '../src/game/index'
 import type { ClientMessage, LobbyRoom, OnlineGameView, OnlineUser, ReplayDetail, RoomView, ServerMessage } from '../src/online/protocol'
+import { isQuickMessageId } from '../src/online/quickMessages'
 import { leaderboard, login, recordHand, register, replayById, replayList, saveReport, userByToken } from './store'
 import { createVoiceToken, deleteVoiceRoom, removeVoiceParticipant, voiceIsConfigured } from './voice'
 
@@ -47,6 +48,9 @@ interface ConnectionMeta {
   role?: 'player' | 'spectator'
   messageTimes: number[]
   invalidActions: number
+  quickMessageBurst: number
+  lastQuickMessageAt: number
+  quickMessageCooldownUntil: number
 }
 
 const rooms = new Map<string, Room>()
@@ -166,6 +170,13 @@ function lobbyRooms(): LobbyRoom[] {
 function broadcastLobby() {
   const message: ServerMessage = { type: 'lobby', rooms: lobbyRooms() }
   for (const sockets of connections.values()) for (const ws of sockets) send(ws, message)
+}
+
+function broadcastRoomMessage(room: Room, message: ServerMessage) {
+  const userIds = new Set([...room.players.map((member) => member.user.id), ...room.spectators.keys()])
+  for (const userId of userIds) for (const ws of socketsFor(userId)) {
+    if (meta.get(ws)?.roomId === room.id) send(ws, message)
+  }
 }
 
 function passwordMatches(room: Room, password = '') {
@@ -455,6 +466,23 @@ function handle(ws: WebSocket, message: ClientMessage) {
   if (message.type === 'leaveRoom') return detach(ws)
   const room = info.roomId && rooms.get(info.roomId)
   if (!room) throw new Error('请先进入房间')
+  if (message.type === 'quickMessage') {
+    if (info.role !== 'player' || !room.players.some((member) => member.user.id === info.user.id && !member.isBot)) {
+      throw new Error('只有牌桌玩家可以发送快捷语')
+    }
+    if (!isQuickMessageId(message.messageId)) throw new Error('未知的快捷语')
+    if (now < info.quickMessageCooldownUntil) {
+      const remaining = Math.ceil((info.quickMessageCooldownUntil - now) / 100) / 10
+      throw new Error(`快捷语连发冷却中，请等待 ${remaining} 秒`)
+    }
+    info.quickMessageBurst = now - info.lastQuickMessageAt <= 1_000 ? info.quickMessageBurst + 1 : 1
+    info.lastQuickMessageAt = now
+    if (info.quickMessageBurst >= 3) {
+      info.quickMessageBurst = 0
+      info.quickMessageCooldownUntil = now + 2_500
+    }
+    return broadcastRoomMessage(room, { type: 'quickMessage', userId: info.user.id, messageId: message.messageId, sentAt: now })
+  }
   if (message.type === 'addBot') {
     if (room.hostId !== info.user.id || info.role !== 'player') throw new Error('只有房主可以添加机器人')
     if (room.status !== 'waiting') throw new Error('只能在开局前添加机器人')
@@ -522,7 +550,14 @@ wss.on('connection', (ws, req) => {
   const url = new URL(req.url ?? '/ws', `http://${req.headers.host ?? 'localhost'}`)
   const user = userByToken(url.searchParams.get('token') ?? undefined)
   if (!user) return ws.close(4001, '未登录')
-  const info: ConnectionMeta = { user, messageTimes: [], invalidActions: 0 }
+  const info: ConnectionMeta = {
+    user,
+    messageTimes: [],
+    invalidActions: 0,
+    quickMessageBurst: 0,
+    lastQuickMessageAt: 0,
+    quickMessageCooldownUntil: 0,
+  }
   meta.set(ws, info)
   const userSockets = connections.get(user.id) ?? new Set<WebSocket>()
   userSockets.add(ws)

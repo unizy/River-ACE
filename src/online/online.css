@@ -24,6 +24,15 @@
 .voice-device { grid-column: 1 / -1; display: grid !important; grid-template-columns: auto minmax(180px, 320px); align-items: center; gap: 9px !important; }
 .voice-device select { padding: 7px 9px; font-size: .7rem; }
 .voice-error { grid-column: 1 / -1; color: #efa39c; font-size: .7rem; }
+.quick-message-controls { position: relative; display: flex; justify-content: flex-end; max-width: 1450px; margin: 0 auto 12px; }
+.quick-message-toggle { border-color: #806e3e; color: #ead18a; }
+.quick-message-menu { position: absolute; z-index: 40; top: calc(100% + 7px); right: 0; display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 6px; width: min(620px, calc(100vw - 28px)); padding: 10px; border: 1px solid #526158; border-radius: 13px; background: rgba(7, 20, 15, .98); box-shadow: 0 18px 50px #000; }
+.quick-message-menu button { padding: 9px 10px; color: #dfd5b8; font-size: .7rem; text-align: left; }
+.quick-message-bubble { position: absolute; z-index: 12; left: 50%; bottom: calc(100% + 7px); translate: -50% 0; width: max-content; max-width: 210px; padding: 8px 11px; border: 1px solid #d8bd74; border-radius: 12px 12px 12px 3px; color: #17130b; background: #f0d991; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); font-size: .72rem; font-weight: 800; line-height: 1.25; text-align: center; animation: quick-message-pop 4s ease both; pointer-events: none; }
+.quick-message-bubble::after { content: ''; position: absolute; left: 18px; top: 100%; border: 6px solid transparent; border-top-color: #f0d991; }
+.waiting-seats article { position: relative; }
+.quick-message-bubble.waiting-bubble { left: 12px; bottom: calc(100% + 6px); translate: 0; }
+@keyframes quick-message-pop { 0% { opacity: 0; transform: translateY(8px) scale(.88); } 8%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-5px); } }
 @keyframes voice-pulse { to { opacity: .35; transform: scale(.8); } }
 .auth-shell { display: grid; place-items: center; }
 .online-auth { display: grid; gap: 14px; width: min(430px, 100%); padding: clamp(24px, 5vw, 46px); border: 1px solid #3a5047; border-radius: 20px; background: rgba(7,20,15,.94); box-shadow: 0 30px 90px #000; }
@@ -92,6 +101,7 @@
   .voice-panel { grid-template-columns: 1fr auto; }
   .voice-panel .voice-actions, .voice-panel .voice-device, .voice-panel .push-to-talk { grid-column: 1 / -1; }
   .voice-panel .push-to-talk { width: 100%; min-height: 48px; }
+  .quick-message-menu { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
 }
 
 @media (max-width: 600px) {
