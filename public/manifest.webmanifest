@@ -1,0 +1,13 @@
+{
+  "name": "River Ace 德州扑克",
+  "short_name": "River Ace",
+  "description": "支持 2～10 人的离线单机无限注德州扑克",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#06100d",
+  "theme_color": "#071612",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

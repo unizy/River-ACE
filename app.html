@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071612" />
+    <meta name="description" content="支持 2～10 人的离线单机无限注德州扑克" />
+    <script>
+      if (window.location.protocol !== 'file:') {
+        const manifest = document.createElement('link')
+        manifest.rel = 'manifest'
+        manifest.href = './manifest.webmanifest'
+        document.head.append(manifest)
+        const icon = document.createElement('link')
+        icon.rel = 'icon'
+        icon.type = 'image/svg+xml'
+        icon.href = './icon.svg'
+        document.head.append(icon)
+      }
+    </script>
+    <title>River Ace · 规则原型</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

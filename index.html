@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071612" />
+    <meta name="description" content="支持 2～10 人的离线单机无限注德州扑克" />
+    <title>River Ace · 规则原型</title>
+  </head>
+  <body>
+    <div id="root">
+      <p style="font: 16px system-ui; color: #eee; background: #06100d; margin: 0; min-height: 100vh; display: grid; place-items: center;">
+        正在启动 River Ace…
+      </p>
+    </div>
+    <script>
+      if (window.location.protocol === 'file:') {
+        window.location.replace(new URL('./dist/index.html', window.location.href).href)
+      } else {
+        const manifest = document.createElement('link')
+        manifest.rel = 'manifest'
+        manifest.href = './manifest.webmanifest'
+        document.head.append(manifest)
+        const icon = document.createElement('link')
+        icon.rel = 'icon'
+        icon.type = 'image/svg+xml'
+        icon.href = './icon.svg'
+        document.head.append(icon)
+        import('/src/main.tsx').catch((error) => {
+          document.getElementById('root').innerHTML = '<p style="padding: 24px; font-family: system-ui">启动失败，请确认开发服务器正在运行。</p>'
+          console.error(error)
+        })
+      }
+    </script>
+  </body>
+</html>
