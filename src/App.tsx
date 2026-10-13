@@ -4,7 +4,8 @@ import {
   type Card, type GameState, type LegalActionType, type PlayerAction,
 } from './game'
 import { createBotView, decideBotAction, PERSONALITIES, PERSONALITY_ORDER } from './ai'
-import { useGameSound } from './hooks/useGameSound'
+import { useGameSound, type SoundName } from './hooks/useGameSound'
+import { useGameMusic } from './hooks/useGameMusic'
 import { usePwaInstall } from './hooks/usePwaInstall'
 import { DealAnimations, holeCardDelay, holeDealDuration } from './components/DealAnimations'
 import { OnlineApp } from './online/OnlineApp'
@@ -63,8 +64,7 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url)
 }
 
-function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
-  const [settings, setSettings] = useState<GameSettings>(() => loadSettings())
+function SinglePlayerApp({ onOpenOnline, settings, setSettings, playSound }: { onOpenOnline: () => void; settings: GameSettings; setSettings: (value: GameSettings) => void; playSound: (name: SoundName) => void }) {
   const [draftSettings, setDraftSettings] = useState(settings)
   const [game, setGame] = useState(() => setupGame(settings))
   const [raiseTo, setRaiseTo] = useState(20)
@@ -77,7 +77,6 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
   const [completedBoardDealKey, setCompletedBoardDealKey] = useState('')
   const processedSettlement = useRef('')
   const previousBoardCount = useRef(0)
-  const playSound = useGameSound(settings.soundEnabled)
   const { canInstall, install } = usePwaInstall()
 
   const currentPlayer = game.players.find((player) => player.seat === game.currentPlayerSeat)
@@ -109,9 +108,10 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
 
   useEffect(() => {
     const dealKey = handVisualKey
+    playSound('deal')
     const timer = window.setTimeout(() => setCompletedHoleDealKey(dealKey), holeDealDuration(game))
     return () => window.clearTimeout(timer)
-  }, [handVisualKey])
+  }, [handVisualKey, playSound])
 
   useEffect(() => {
     const currentCount = game.communityCards.length
@@ -134,7 +134,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
       const view = createBotView(game)
       const decision = decideBotAction(view, settings.aiDifficulty)
       setAiReason(`${PERSONALITIES[view.personality].name}：${decision.reason}`)
-      playSound('action')
+      playSound(decision.action.type)
       setGame((state) => {
         if (state.currentPlayerSeat !== expectedSeat || state.actionHistory.length !== expectedActionCount) return state
         return performAction(state, expectedSeat, decision.action)
@@ -175,7 +175,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
     const action: PlayerAction = type === 'bet' || type === 'raise'
       ? { type, amount: Math.min(raiseTo, legal.maxTo) }
       : { type } as PlayerAction
-    playSound('action')
+    playSound(type)
     setGame((state) => performAction(state, hero.seat, action))
   }
 
@@ -199,6 +199,20 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
     saveSettings(next)
   }
 
+  const toggleMusic = () => {
+    const next = { ...settings, musicEnabled: !settings.musicEnabled }
+    setSettings(next)
+    setDraftSettings(next)
+    saveSettings(next)
+  }
+
+  // 音量滑杆即时生效并保存，便于边拖动边试听。
+  const applyVolume = (key: 'soundVolume' | 'musicVolume', value: number) => {
+    setSettings({ ...settings, [key]: value })
+    setDraftSettings({ ...draftSettings, [key]: value })
+    saveSettings({ ...settings, [key]: value })
+  }
+
   const quickTarget = (fraction: number) => {
     if (minAggression === null) return
     const raw = game.currentBet === 0 ? pot * fraction : game.currentBet + pot * fraction
@@ -218,6 +232,9 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
           {canInstall && <button className="secondary install-button" onClick={install}>安装应用</button>}
           <button className="icon-button" aria-label={settings.soundEnabled ? '关闭音效' : '开启音效'} onClick={toggleSound}>
             {settings.soundEnabled ? '♪' : '静音'}
+          </button>
+          <button className="icon-button" aria-label={settings.musicEnabled ? '关闭背景音乐' : '开启背景音乐'} title="背景音乐" style={{ opacity: settings.musicEnabled ? 1 : 0.4 }} onClick={toggleMusic}>
+            ♫
           </button>
           <button className="secondary online-entry" onClick={onOpenOnline}>在线多人</button>
           <button className="secondary" onClick={() => reset()}>新牌局</button>
@@ -383,9 +400,13 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
               <option value="easy">休闲</option><option value="normal">标准</option><option value="hard">认真</option></select></label>
             <label>行动速度<select value={draftSettings.aiSpeed} onChange={(event) => setDraftSettings({ ...draftSettings, aiSpeed: event.target.value as GameSettings['aiSpeed'] })}>
               <option value="slow">从容</option><option value="normal">标准</option><option value="fast">快速</option></select></label>
+            <label>音效音量 {Math.round(draftSettings.soundVolume * 100)}%<input type="range" min="0" max="1" step="0.05" value={draftSettings.soundVolume} onChange={(event) => applyVolume('soundVolume', Number(event.target.value))} /></label>
+            <label>音乐音量 {Math.round(draftSettings.musicVolume * 100)}%<input type="range" min="0" max="1" step="0.05" value={draftSettings.musicVolume} onChange={(event) => applyVolume('musicVolume', Number(event.target.value))} /></label>
           </div>
           <label className="switch-row"><span><strong>音效</strong><small>行动、发牌与获胜提示音</small></span>
             <input type="checkbox" checked={draftSettings.soundEnabled} onChange={(event) => setDraftSettings({ ...draftSettings, soundEnabled: event.target.checked })} /></label>
+          <label className="switch-row"><span><strong>背景音乐</strong><small>循环播放的轻音乐，首次点击后开始</small></span>
+            <input type="checkbox" checked={draftSettings.musicEnabled} onChange={(event) => setDraftSettings({ ...draftSettings, musicEnabled: event.target.checked })} /></label>
           <label className="switch-row"><span><strong>自动开始下一局</strong><small>结算展示后继续游戏</small></span>
             <input type="checkbox" checked={draftSettings.autoNextHand} onChange={(event) => setDraftSettings({ ...draftSettings, autoNextHand: event.target.checked })} /></label>
           <div className="personality-list">{PERSONALITY_ORDER.map((id) => <div key={id}><strong>{PERSONALITIES[id].name}</strong><span>{PERSONALITIES[id].description}</span></div>)}</div>
@@ -398,7 +419,15 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
 
 export default function App() {
   const [mode, setMode] = useState<'single' | 'online'>(() => new URLSearchParams(window.location.search).has('room') ? 'online' : 'single')
+  const [settings, setSettings] = useState<GameSettings>(() => loadSettings())
+  const playSound = useGameSound(settings.soundEnabled, settings.soundVolume)
+  useGameMusic(settings.musicEnabled, settings.musicVolume)
+  const toggleMusic = () => {
+    const next = { ...settings, musicEnabled: !settings.musicEnabled }
+    setSettings(next)
+    saveSettings(next)
+  }
   return mode === 'online'
-    ? <OnlineApp onBack={() => setMode('single')} />
-    : <SinglePlayerApp onOpenOnline={() => setMode('online')} />
+    ? <OnlineApp playSound={playSound} music={{ enabled: settings.musicEnabled, toggle: toggleMusic }} onBack={() => setMode('single')} />
+    : <SinglePlayerApp settings={settings} setSettings={setSettings} playSound={playSound} onOpenOnline={() => setMode('online')} />
 }

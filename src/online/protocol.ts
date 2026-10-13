@@ -1,4 +1,4 @@
-import type { BotPersonality, Card, GameConfig, LegalActions, PlayerAction, Pot, Street, WinnerRecord } from '../game'
+import type { BotPersonality, Card, GameConfig, LegalActionType, LegalActions, PlayerAction, Pot, Street, WinnerRecord } from '../game'
 
 export interface OnlineUser {
   id: string
@@ -50,6 +50,7 @@ export interface OnlineGameView {
   lastFullRaiseSize: number
   actionHistory: string[]
   winners: WinnerRecord[]
+  lastAction?: { playerId: string; type: LegalActionType } | null
 }
 
 export interface RoomView {

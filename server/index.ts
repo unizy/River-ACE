@@ -4,7 +4,7 @@ import { extname, join, resolve } from 'node:path'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import { createBotView, decideBotAction, PERSONALITIES } from '../src/ai/index'
-import { createGame, getLegalActions, performAction, startHand, startNextHand, type BotPersonality, type GameState, type PlayerAction } from '../src/game/index'
+import { createGame, getLegalActions, performAction, startHand, startNextHand, type BotPersonality, type GameState, type LegalActionType, type PlayerAction } from '../src/game/index'
 import type { ClientMessage, LobbyRoom, OnlineGameView, OnlineUser, ReplayDetail, RoomView, ServerMessage } from '../src/online/protocol'
 import { leaderboard, login, recordHand, register, replayById, replayList, saveReport, userByToken } from './store'
 import { createVoiceToken, deleteVoiceRoom, removeVoiceParticipant, voiceIsConfigured } from './voice'
@@ -39,6 +39,7 @@ interface Room {
   turnTimer?: NodeJS.Timeout
   nextHandTimer?: NodeJS.Timeout
   savedSettlement?: string
+  lastAction?: { playerId: string; type: LegalActionType } | null
 }
 
 interface ConnectionMeta {
@@ -72,7 +73,7 @@ function bearer(req: IncomingMessage) {
 }
 
 function mime(path: string) {
-  return ({ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json' } as Record<string, string>)[extname(path)] ?? 'application/octet-stream'
+  return ({ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.mp3': 'audio/mpeg' } as Record<string, string>)[extname(path)] ?? 'application/octet-stream'
 }
 
 const httpServer = createServer(async (req, res) => {
@@ -189,6 +190,7 @@ function viewerGame(room: Room, viewerId: string): OnlineGameView | undefined {
       isBot: room.players.find((member) => member.user.id === player.id)?.isBot ?? false,
     })),
     deck: undefined,
+    lastAction: room.lastAction ?? null,
   } as unknown as OnlineGameView
 }
 
@@ -332,6 +334,14 @@ function beginNextHand(room: Room) {
   scheduleTurn(room)
 }
 
+function applyAction(room: Room, seat: number, action: PlayerAction) {
+  if (!room.game) return
+  const actor = room.game.players.find((player) => player.seat === seat)
+  room.game = performAction(room.game, seat, action)
+  room.lastAction = actor ? { playerId: actor.id, type: action.type } : null
+  afterGameChange(room)
+}
+
 function afterGameChange(room: Room) {
   if (room.game?.phase === 'SETTLEMENT') {
     if (room.turnTimer) clearTimeout(room.turnTimer)
@@ -362,8 +372,7 @@ function scheduleTurn(room: Room) {
     if (member?.isBot) {
       try { action = decideBotAction(createBotView(room.game, seat), 'normal').action } catch { /* use safe fallback */ }
     }
-    room.game = performAction(room.game, seat, action)
-    afterGameChange(room)
+    applyAction(room, seat, action)
   }, duration)
 }
 
@@ -490,6 +499,7 @@ function handle(ws: WebSocket, message: ClientMessage) {
     }))))
     room.status = 'playing'
     room.savedSettlement = undefined
+    room.lastAction = null
     return scheduleTurn(room)
   }
   if (message.type === 'action') {
@@ -500,9 +510,9 @@ function handle(ws: WebSocket, message: ClientMessage) {
       throw new Error('尚未轮到你行动')
     }
     try {
-      room.game = performAction(room.game, actor.seat, message.action)
+      applyAction(room, actor.seat, message.action)
       info.invalidActions = 0
-      return afterGameChange(room)
+      return
     } catch (error) {
       info.invalidActions += 1
       if (info.invalidActions >= 5) saveReport({ reporterId: 'system', targetUserId: info.user.id, roomId: room.id, reason: '连续提交非法动作' })

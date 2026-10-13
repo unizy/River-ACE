@@ -6,6 +6,9 @@ export interface GameSettings {
   aiDifficulty: AiDifficulty
   aiSpeed: 'slow' | 'normal' | 'fast'
   soundEnabled: boolean
+  soundVolume: number
+  musicEnabled: boolean
+  musicVolume: number
   autoNextHand: boolean
 }
 
@@ -15,6 +18,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   aiDifficulty: 'normal',
   aiSpeed: 'normal',
   soundEnabled: true,
+  soundVolume: 0.8,
+  musicEnabled: true,
+  musicVolume: 0.4,
   autoNextHand: true,
 }
 
@@ -23,6 +29,11 @@ const KEY = 'river-ace:settings:v1'
 interface StorageLike {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+}
+
+function volume(value: unknown, fallback: number): number {
+  const number = typeof value === 'number' && Number.isFinite(value) ? value : fallback
+  return Math.min(1, Math.max(0, number))
 }
 
 function normalized(value: Partial<GameSettings>): GameSettings {
@@ -38,6 +49,9 @@ function normalized(value: Partial<GameSettings>): GameSettings {
       ? value.aiSpeed!
       : DEFAULT_SETTINGS.aiSpeed,
     soundEnabled: value.soundEnabled ?? DEFAULT_SETTINGS.soundEnabled,
+    soundVolume: volume(value.soundVolume, DEFAULT_SETTINGS.soundVolume),
+    musicEnabled: value.musicEnabled ?? DEFAULT_SETTINGS.musicEnabled,
+    musicVolume: volume(value.musicVolume, DEFAULT_SETTINGS.musicVolume),
     autoNextHand: value.autoNextHand ?? DEFAULT_SETTINGS.autoNextHand,
   }
 }

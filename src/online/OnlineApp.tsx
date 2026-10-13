@@ -4,6 +4,7 @@ import { buildWinnerExplanations, formatCard, type BotPersonality, type Card, ty
 import type { ClientMessage, LobbyRoom, OnlineUser, ReplayDetail, ReplaySummary, RoomView, ServerMessage } from './protocol'
 import { VoiceControls } from '../voice/VoiceControls'
 import { useRoomVoice } from '../voice/useRoomVoice'
+import type { SoundName } from '../hooks/useGameSound'
 import './online.css'
 
 const TOKEN_KEY = 'river-ace-online-token'
@@ -18,7 +19,7 @@ function apiHeaders(token?: string) {
   return { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }
 }
 
-export function OnlineApp({ onBack }: { onBack: () => void }) {
+export function OnlineApp({ onBack, music, playSound }: { onBack: () => void; music: { enabled: boolean; toggle: () => void }; playSound: (name: SoundName) => void }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '')
   const [user, setUser] = useState<OnlineUser | null>(null)
   const [connected, setConnected] = useState(false)
@@ -166,7 +167,7 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
   )
 
   if (room) return <OnlineRoom room={room} user={user} token={token} remaining={remaining} raiseTo={raiseTo} setRaiseTo={setRaiseTo}
-    send={send} connected={connected} error={error} notice={notice} onBack={() => send({ type: 'leaveRoom' })}
+    send={send} connected={connected} error={error} notice={notice} onBack={() => send({ type: 'leaveRoom' })} music={music} playSound={playSound}
     reportOpen={reportOpen} setReportOpen={setReportOpen} reportTarget={reportTarget} setReportTarget={setReportTarget}
     reportReason={reportReason} setReportReason={setReportReason} />
 
@@ -176,6 +177,7 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
         <div><p className="eyebrow">RIVER ACE ONLINE</p><h1>好友房大厅</h1></div>
         <div className="online-account"><span className={connected ? 'online-dot connected' : 'online-dot'} />
           <strong>{user.username}</strong><small>{connected ? '已连接' : '重连中'}</small>
+          <button aria-label={music.enabled ? '关闭背景音乐' : '开启背景音乐'} title="背景音乐" style={{ opacity: music.enabled ? 1 : 0.4 }} onClick={music.toggle}>♫</button>
           <button onClick={onBack}>单机版</button><button onClick={logout}>退出</button></div>
       </header>
       {(error || notice) && <div className={`online-alert ${error ? 'error' : ''}`}>{error || notice}</div>}
@@ -223,6 +225,8 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
 interface OnlineRoomProps {
   room: RoomView; user: OnlineUser; token: string; remaining: number; raiseTo: number; setRaiseTo: (value: number) => void
   send: (message: ClientMessage) => void; connected: boolean; error: string; notice: string; onBack: () => void
+  music: { enabled: boolean; toggle: () => void }
+  playSound: (name: SoundName) => void
   reportOpen: boolean; setReportOpen: (value: boolean) => void; reportTarget: string; setReportTarget: (value: string) => void
   reportReason: string; setReportReason: (value: string) => void
 }
@@ -252,10 +256,43 @@ function OnlineRoom(props: OnlineRoomProps) {
   }
   const invite = `${window.location.origin}${window.location.pathname}?room=${room.id}`
 
+  // 在线端根据房间状态变化推断音效：新一手/新公共牌发牌、最近动作、结算获胜。
+  const soundState = useRef({
+    hand: room.game?.handNumber ?? 0,
+    board: room.game?.communityCards.length ?? 0,
+    action: `${room.game?.handNumber ?? 0}:${room.game?.actionHistory.length ?? 0}`,
+    settled: room.game?.phase === 'SETTLEMENT',
+  })
+
+  useEffect(() => {
+    const game = room.game
+    if (!game) return
+    const state = soundState.current
+    if (game.handNumber !== state.hand || game.communityCards.length !== state.board) props.playSound('deal')
+    state.hand = game.handNumber
+    state.board = game.communityCards.length
+  }, [room.game?.handNumber, room.game?.communityCards.length])
+
+  useEffect(() => {
+    const game = room.game
+    if (!game?.lastAction) return
+    const key = `${game.handNumber}:${game.actionHistory.length}:${game.lastAction.playerId}:${game.lastAction.type}`
+    if (soundState.current.action === key) return
+    soundState.current.action = key
+    props.playSound(game.lastAction.type)
+  }, [room.game?.lastAction, room.game?.actionHistory.length])
+
+  useEffect(() => {
+    const settled = room.game?.phase === 'SETTLEMENT'
+    if (settled && !soundState.current.settled) props.playSound('win')
+    soundState.current.settled = settled
+  }, [room.game?.phase])
+
   return <main className="online-shell online-game-shell">
     <header className="online-header compact"><div><p className="eyebrow">好友房 {room.id}</p><h1>{room.name}</h1></div>
       <div className="room-controls"><span className={props.connected ? 'online-dot connected' : 'online-dot'} />
         <span>{room.viewerRole === 'spectator' ? `观战中 · ${room.spectators} 人` : user.username}</span>
+        <button aria-label={props.music.enabled ? '关闭背景音乐' : '开启背景音乐'} title="背景音乐" style={{ opacity: props.music.enabled ? 1 : 0.4 }} onClick={props.music.toggle}>♫</button>
         <button onClick={() => navigator.clipboard.writeText(invite).then(() => undefined)}>复制邀请链接</button>
         <button onClick={props.onBack}>离开房间</button></div></header>
     <VoiceControls voice={voice} canPublish={room.viewerRole === 'player'} />

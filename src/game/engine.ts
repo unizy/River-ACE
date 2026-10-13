@@ -181,19 +181,27 @@ function beginStreet(state: GameState, phase: 'FLOP' | 'TURN' | 'RIVER', cardCou
 
 function aggregateWinners(state: GameState): WinnerRecord[] {
   const awards = new Map<string, number>()
+  const contested = new Set<string>()
   for (const pot of state.pots) {
-    for (const [id, amount] of Object.entries(pot.awards)) awards.set(id, (awards.get(id) ?? 0) + amount)
+    // 只有一名合格玩家的池子是“未被跟注的筹码退还”，不计为获胜。
+    const contestedPot = pot.eligiblePlayerIds.length >= 2
+    for (const [id, amount] of Object.entries(pot.awards)) {
+      awards.set(id, (awards.get(id) ?? 0) + amount)
+      if (contestedPot && amount > 0) contested.add(id)
+    }
   }
-  return [...awards.entries()].map(([playerId, amount]) => ({
-    playerId,
-    amount,
-    hand: state.players.find((player) => player.id === playerId)?.folded
-      ? undefined
-      : evaluateBestHand([
-        ...state.players.find((player) => player.id === playerId)!.holeCards,
-        ...state.communityCards,
-      ]),
-  }))
+  return [...awards.entries()]
+    .filter(([playerId, amount]) => amount > 0 && contested.has(playerId))
+    .map(([playerId, amount]) => ({
+      playerId,
+      amount,
+      hand: state.players.find((player) => player.id === playerId)?.folded
+        ? undefined
+        : evaluateBestHand([
+          ...state.players.find((player) => player.id === playerId)!.holeCards,
+          ...state.communityCards,
+        ]),
+    }))
 }
 
 function showdown(state: GameState): GameState {
