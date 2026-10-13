@@ -67,6 +67,14 @@ export interface RoomView {
   actionDeadline?: number
 }
 
+export interface VoiceTokenResponse {
+  url: string
+  token: string
+  roomName: string
+  canPublish: boolean
+  expiresAt: number
+}
+
 export interface ReplaySummary {
   id: string
   roomName: string

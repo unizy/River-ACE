@@ -1,0 +1,21 @@
+[Unit]
+Description=River Ace HTTPS reverse proxy
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f river-ace-caddy
+ExecStart=/usr/bin/docker run --name river-ace-caddy --network host --restart no -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro -v /var/lib/caddy/data:/data -v /var/lib/caddy/config:/config caddy:2.10.2-alpine caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecStop=/usr/bin/docker stop -t 15 river-ace-caddy
+ExecStopPost=-/usr/bin/docker rm -f river-ace-caddy
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/caddy
+
+[Install]
+WantedBy=multi-user.target

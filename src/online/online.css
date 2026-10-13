@@ -9,6 +9,22 @@
 .online-dot.connected { background: #67c88f; box-shadow: 0 0 8px #67c88f; }
 .online-alert { max-width: 1450px; margin: 0 auto 14px; padding: 10px 14px; border: 1px solid #456c58; border-radius: 9px; color: #bde4ca; background: rgba(19,57,40,.9); }
 .online-alert.error { border-color: #814d48; color: #f0aaa2; background: rgba(66,25,22,.92); }
+.voice-panel { display: grid; grid-template-columns: auto auto minmax(180px, 1fr); align-items: center; gap: 10px; max-width: 1450px; margin: 0 auto 14px; padding: 10px 13px; border: 1px solid #2e4b3e; border-radius: 12px; background: rgba(8, 25, 18, .95); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); }
+.voice-panel.compact-voice-panel { grid-template-columns: 1fr auto; }
+.voice-panel > div:first-child, .voice-status { display: flex; align-items: center; gap: 9px; }
+.voice-panel > div:first-child:not(.voice-status) { display: grid; gap: 2px; }
+.voice-panel small { display: block; color: #8da198; font-size: .66rem; }
+.voice-status i { width: 9px; height: 9px; border-radius: 50%; background: #58c982; box-shadow: 0 0 9px #58c982; }
+.voice-status i.reconnecting { background: #d2a64f; box-shadow: 0 0 9px #d2a64f; animation: voice-pulse 1s infinite alternate; }
+.voice-mode, .voice-actions { display: flex; align-items: center; gap: 6px; }
+.voice-mode button, .voice-actions button { padding: 7px 10px; font-size: .66rem; white-space: nowrap; }
+.voice-mode button.active { border-color: #cfb562; color: #f2dfa3; background: #283b27; }
+.voice-panel .push-to-talk { min-width: 190px; border-color: #806e3e; color: #ead18a; touch-action: none; user-select: none; }
+.voice-panel .push-to-talk.talking { border-color: #61d28d; color: #0a1b12; background: #61d28d; box-shadow: 0 0 18px rgba(97, 210, 141, .35); }
+.voice-device { grid-column: 1 / -1; display: grid !important; grid-template-columns: auto minmax(180px, 320px); align-items: center; gap: 9px !important; }
+.voice-device select { padding: 7px 9px; font-size: .7rem; }
+.voice-error { grid-column: 1 / -1; color: #efa39c; font-size: .7rem; }
+@keyframes voice-pulse { to { opacity: .35; transform: scale(.8); } }
 .auth-shell { display: grid; place-items: center; }
 .online-auth { display: grid; gap: 14px; width: min(430px, 100%); padding: clamp(24px, 5vw, 46px); border: 1px solid #3a5047; border-radius: 20px; background: rgba(7,20,15,.94); box-shadow: 0 30px 90px #000; }
 .online-auth h1 { font-size: 2.1rem; }
@@ -41,6 +57,7 @@
 .waiting-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .waiting-seats article { display: grid; gap: 5px; padding: 13px; border: 1px dashed #344a40; border-radius: 10px; color: #65776d; }
 .waiting-seats article.occupied { border-style: solid; color: #e9e3d4; background: #10241b; }
+.waiting-seats article.speaking, .online-table .seat.speaking { border-color: #68d696; box-shadow: 0 0 0 2px rgba(104, 214, 150, .35), 0 0 20px rgba(104, 214, 150, .28); }
 .waiting-seats b { color: #b89f63; }
 .waiting-seats small, .waiting-copy { color: #82948a; }
 .waiting-seats .remove-bot { justify-self: start; padding: 4px 8px; border-color: #63463e; color: #d99a8e; font-size: .65rem; }
@@ -72,6 +89,9 @@
   .online-history { max-height: 230px; }
   .online-header { align-items: flex-start; }
   .online-account, .room-controls { flex-wrap: wrap; justify-content: flex-end; }
+  .voice-panel { grid-template-columns: 1fr auto; }
+  .voice-panel .voice-actions, .voice-panel .voice-device, .voice-panel .push-to-talk { grid-column: 1 / -1; }
+  .voice-panel .push-to-talk { width: 100%; min-height: 48px; }
 }
 
 @media (max-width: 600px) {

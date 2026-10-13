@@ -1,0 +1,20 @@
+[Unit]
+Description=River Ace LiveKit voice server
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f river-ace-livekit
+ExecStart=/usr/bin/docker run --name river-ace-livekit --network host --restart no -v /etc/livekit.yaml:/etc/livekit.yaml:ro livekit/livekit-server:v1.13.9 --config /etc/livekit.yaml
+ExecStop=/usr/bin/docker stop -t 15 river-ace-livekit
+ExecStopPost=-/usr/bin/docker rm -f river-ace-livekit
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

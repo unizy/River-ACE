@@ -9,8 +9,9 @@ User=riverace
 Group=riverace
 WorkingDirectory=/opt/river-ace
 Environment=NODE_ENV=production
-Environment=PORT=80
+Environment=PORT=8787
 Environment=RIVER_ACE_DATA=/var/lib/river-ace/store.json
+EnvironmentFile=-/etc/river-ace/river-ace.env
 ExecStart=/opt/node-v24.19.0/bin/node /opt/river-ace/node_modules/tsx/dist/cli.mjs /opt/river-ace/server/index.ts
 Restart=always
 RestartSec=3
@@ -19,8 +20,6 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/river-ace
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

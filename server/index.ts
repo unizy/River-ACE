@@ -7,6 +7,7 @@ import { createBotView, decideBotAction, PERSONALITIES } from '../src/ai/index'
 import { createGame, getLegalActions, performAction, startHand, startNextHand, type BotPersonality, type GameState, type PlayerAction } from '../src/game/index'
 import type { ClientMessage, LobbyRoom, OnlineGameView, OnlineUser, ReplayDetail, RoomView, ServerMessage } from '../src/online/protocol'
 import { leaderboard, login, recordHand, register, replayById, replayList, saveReport, userByToken } from './store'
+import { createVoiceToken, deleteVoiceRoom, removeVoiceParticipant, voiceIsConfigured } from './voice'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const TURN_MS = Number(process.env.TURN_MS ?? 25_000)
@@ -98,6 +99,23 @@ const httpServer = createServer(async (req, res) => {
       const user = userByToken(bearer(req))
       const replay = user && replayById(url.pathname.split('/').pop()!, user.id)
       return replay ? json(res, 200, replay) : json(res, user ? 404 : 401, { error: user ? '回放不存在' : '请先登录' })
+    }
+    if (req.method === 'POST' && url.pathname === '/api/voice/token') {
+      const user = userByToken(bearer(req))
+      if (!user) return json(res, 401, { error: '请先登录' })
+      if (!voiceIsConfigured()) return json(res, 503, { error: '语音服务尚未配置，请联系管理员' })
+      const value = await body(req)
+      const requestedRoomId = String(value.roomId ?? '').toUpperCase()
+      const room = [...rooms.values()].find((candidate) => {
+        if (requestedRoomId && candidate.id !== requestedRoomId) return false
+        return candidate.players.some((member) => member.user.id === user.id && !member.isBot && !member.leaving)
+          || candidate.spectators.has(user.id)
+      })
+      if (!room) return json(res, 403, { error: '你当前不在该房间内' })
+      const member = room.players.find((candidate) => candidate.user.id === user.id)
+      if (member && !member.connected) return json(res, 403, { error: '游戏连接已断开，恢复连接后才能加入语音' })
+      const role = member ? 'player' : 'spectator'
+      return json(res, 200, await createVoiceToken(user, room.id, role))
     }
     if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { ok: true, rooms: rooms.size })
 
@@ -227,6 +245,7 @@ function ensureHost(room: Room) {
 function dissolveRoom(room: Room) {
   clearTimers(room)
   rooms.delete(room.id)
+  deleteVoiceRoom(room.id)
   const userIds = new Set([
     ...room.players.filter((member) => !member.isBot).map((member) => member.user.id),
     ...room.spectators.keys(),
@@ -248,6 +267,7 @@ function expireDisconnectedPlayer(room: Room, userId: string) {
   if (!member || member.connected) return
   member.disconnectTimer = undefined
   member.leaving = true
+  removeVoiceParticipant(room.id, userId)
   if (room.status === 'waiting') room.players = room.players.filter((candidate) => candidate !== member)
   ensureHost(room)
   if (!hasRetainedHuman(room)) return dissolveRoom(room)
@@ -353,6 +373,7 @@ function detach(ws: WebSocket, announce = true) {
   const room = rooms.get(info.roomId)
   if (!room) return
   const userId = info.user.id
+  removeVoiceParticipant(room.id, userId)
   if (info.role === 'spectator') room.spectators.delete(userId)
   else {
     const member = room.players.find((candidate) => candidate.user.id === userId)
@@ -530,6 +551,7 @@ wss.on('connection', (ws, req) => {
     if (!room || socketsInRoom(user.id, room.id).length > 0) return
     if (info.role === 'spectator') {
       room.spectators.delete(user.id)
+      removeVoiceParticipant(room.id, user.id)
       broadcastRoom(room)
       return broadcastLobby()
     }

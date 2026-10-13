@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { PERSONALITIES, PERSONALITY_ORDER } from '../ai'
 import { buildWinnerExplanations, formatCard, type BotPersonality, type Card, type GameState, type LegalActionType, type PlayerAction } from '../game'
 import type { ClientMessage, LobbyRoom, OnlineUser, ReplayDetail, ReplaySummary, RoomView, ServerMessage } from './protocol'
+import { VoiceControls } from '../voice/VoiceControls'
+import { useRoomVoice } from '../voice/useRoomVoice'
 import './online.css'
 
 const TOKEN_KEY = 'river-ace-online-token'
@@ -163,7 +165,7 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
     </main>
   )
 
-  if (room) return <OnlineRoom room={room} user={user} remaining={remaining} raiseTo={raiseTo} setRaiseTo={setRaiseTo}
+  if (room) return <OnlineRoom room={room} user={user} token={token} remaining={remaining} raiseTo={raiseTo} setRaiseTo={setRaiseTo}
     send={send} connected={connected} error={error} notice={notice} onBack={() => send({ type: 'leaveRoom' })}
     reportOpen={reportOpen} setReportOpen={setReportOpen} reportTarget={reportTarget} setReportTarget={setReportTarget}
     reportReason={reportReason} setReportReason={setReportReason} />
@@ -219,7 +221,7 @@ export function OnlineApp({ onBack }: { onBack: () => void }) {
 }
 
 interface OnlineRoomProps {
-  room: RoomView; user: OnlineUser; remaining: number; raiseTo: number; setRaiseTo: (value: number) => void
+  room: RoomView; user: OnlineUser; token: string; remaining: number; raiseTo: number; setRaiseTo: (value: number) => void
   send: (message: ClientMessage) => void; connected: boolean; error: string; notice: string; onBack: () => void
   reportOpen: boolean; setReportOpen: (value: boolean) => void; reportTarget: string; setReportTarget: (value: string) => void
   reportReason: string; setReportReason: (value: string) => void
@@ -228,6 +230,7 @@ interface OnlineRoomProps {
 function OnlineRoom(props: OnlineRoomProps) {
   const { room, user, remaining, raiseTo, setRaiseTo, send } = props
   const [botPersonality, setBotPersonality] = useState<BotPersonality>('balanced')
+  const voice = useRoomVoice(room.id, props.token, room.viewerRole === 'player')
   const game = room.game
   const legal = room.legalActions
   const current = game?.players.find((player) => player.seat === game.currentPlayerSeat)
@@ -255,12 +258,13 @@ function OnlineRoom(props: OnlineRoomProps) {
         <span>{room.viewerRole === 'spectator' ? `观战中 · ${room.spectators} 人` : user.username}</span>
         <button onClick={() => navigator.clipboard.writeText(invite).then(() => undefined)}>复制邀请链接</button>
         <button onClick={props.onBack}>离开房间</button></div></header>
+    <VoiceControls voice={voice} canPublish={room.viewerRole === 'player'} />
     {(props.error || props.notice) && <div className={`online-alert ${props.error ? 'error' : ''}`}>{props.error || props.notice}</div>}
     {room.status === 'waiting' || !game ? <section className="waiting-room online-panel">
       <div><p className="eyebrow">WAITING ROOM</p><h2>等待玩家加入</h2><p>邀请链接：<code>{invite}</code></p></div>
       <div className="waiting-seats">{Array.from({ length: room.maxPlayers }, (_, seat) => {
         const player = room.players[seat]
-        return <article key={seat} className={player ? 'occupied' : ''}><b>{seat + 1}</b><strong>{player ? `${player.isBot ? '🤖 ' : ''}${player.name}` : '空座位'}</strong>
+        return <article key={seat} className={`${player ? 'occupied' : ''} ${player && voice.speakingIds.has(player.id) ? 'speaking' : ''}`}><b>{seat + 1}</b><strong>{player ? `${player.isBot ? '🤖 ' : ''}${player.name}` : '空座位'}</strong>
           <small>{player ? (player.isBot ? PERSONALITIES[player.personality ?? 'balanced'].description : player.connected ? '在线' : '断线') : '等待加入'}</small>
           {player?.isBot && room.hostId === user.id && <button className="remove-bot" onClick={() => send({ type: 'removeBot', botId: player.id })}>移除</button>}</article>
       })}</div>
@@ -277,7 +281,7 @@ function OnlineRoom(props: OnlineRoomProps) {
             ? <CardView key={index} card={game.communityCards[index]} highlighted={bestKeys.has(formatCard(game.communityCards[index]))} />
             : <span className="card empty" key={index} />)}</div>
           <strong>底池 {game.players.reduce((sum, player) => sum + player.totalContribution, 0)}</strong></div>
-        {game.players.map((player, index) => <article key={player.id} className={`seat ${player.seat === game.currentPlayerSeat ? 'current' : ''} ${player.folded ? 'folded' : ''} ${winnerIds.has(player.id) ? 'winner' : ''}`} style={seatStyles[index]}>
+        {game.players.map((player, index) => <article key={player.id} className={`seat ${player.seat === game.currentPlayerSeat ? 'current' : ''} ${player.folded ? 'folded' : ''} ${winnerIds.has(player.id) ? 'winner' : ''} ${voice.speakingIds.has(player.id) ? 'speaking' : ''}`} style={seatStyles[index]}>
           <div className="hole-cards">{player.hasCards ? [0, 1].map((cardIndex) => <CardView key={cardIndex} card={player.holeCards[cardIndex]}
             hidden={!player.holeCards[cardIndex]} winner={winnerIds.has(player.id)} highlighted={player.holeCards[cardIndex] ? bestKeys.has(formatCard(player.holeCards[cardIndex])) : false} />) : null}</div>
           <div className="seat-name"><strong>{player.isBot ? '🤖 ' : ''}{player.name}{player.id === user.id ? '（你）' : ''}</strong><span>{player.chips}</span></div>

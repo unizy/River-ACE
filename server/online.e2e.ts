@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { unlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import WebSocket from 'ws'
+import { TokenVerifier } from 'livekit-server-sdk'
 import type { ClientMessage, RoomView, ServerMessage } from '../src/online/protocol'
 
 const port = 8799
@@ -11,6 +12,9 @@ process.env.TURN_MS = '3000'
 process.env.NEXT_HAND_MS = '3000'
 process.env.DISCONNECT_GRACE_MS = '600'
 process.env.RIVER_ACE_DATA = storePath
+process.env.LIVEKIT_URL = 'wss://voice.test.invalid'
+process.env.LIVEKIT_API_KEY = 'e2e-key'
+process.env.LIVEKIT_API_SECRET = 'e2e-secret-with-enough-entropy'
 await import('./index')
 
 const base = `http://127.0.0.1:${port}`
@@ -75,6 +79,31 @@ try {
   watcher.send({ type: 'spectateRoom', roomId, password: 'room-pass' })
   watcher2.send({ type: 'spectateRoom', roomId, password: 'room-pass' })
   await Promise.all([alice.wait(() => alice.room?.players.length === 4 && alice.room.spectators === 2), bob.wait(() => bob.room?.players.length === 4), watcher.wait(() => watcher.room?.viewerRole === 'spectator')])
+
+  const voiceHeaders = (token: string) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' })
+  const playerVoiceResponse = await fetch(`${base}/api/voice/token`, { method: 'POST', headers: voiceHeaders(aliceAccount.token), body: JSON.stringify({ roomId }) })
+  const playerVoice = await playerVoiceResponse.json() as { token: string; url: string; canPublish: boolean; roomName: string }
+  assert.equal(playerVoiceResponse.status, 200)
+  assert.equal(playerVoice.url, 'wss://voice.test.invalid')
+  assert.equal(playerVoice.roomName, `river-ace-${roomId.toLowerCase()}`)
+  assert.equal(playerVoice.canPublish, true)
+  const verifier = new TokenVerifier('e2e-key', 'e2e-secret-with-enough-entropy')
+  const playerGrant = await verifier.verify(playerVoice.token)
+  assert.equal(playerGrant.sub, aliceAccount.user.id)
+  assert.equal(playerGrant.video?.room, playerVoice.roomName)
+  assert.equal(playerGrant.video?.canPublish, true)
+
+  const spectatorVoiceResponse = await fetch(`${base}/api/voice/token`, { method: 'POST', headers: voiceHeaders(watcherAccount.token), body: JSON.stringify({ roomId }) })
+  const spectatorVoice = await spectatorVoiceResponse.json() as { token: string; canPublish: boolean }
+  const spectatorGrant = await verifier.verify(spectatorVoice.token)
+  assert.equal(spectatorVoiceResponse.status, 200)
+  assert.equal(spectatorVoice.canPublish, false)
+  assert.equal(spectatorGrant.video?.canPublish, false)
+  assert.equal((await fetch(`${base}/api/voice/token`, { method: 'POST' })).status, 401)
+
+  delete process.env.LIVEKIT_URL
+  delete process.env.LIVEKIT_API_KEY
+  delete process.env.LIVEKIT_API_SECRET
   watcher2.ws.close()
   await alice.wait(() => alice.room?.spectators === 1)
 
@@ -145,7 +174,7 @@ try {
   const health = await healthResponse.json() as { rooms: number }
   assert.equal(health.rooms, 0)
 
-  console.log('在线 E2E 通过：多标签页单房间、观战断开清理、断线宽限重连、房主转移、超时离桌、全员超时自动解散，以及原有完整牌局流程')
+  console.log('在线 E2E 通过：语音令牌与发布权限、多标签页单房间、观战断开清理、断线宽限重连、房主转移、超时离桌、全员超时自动解散，以及原有完整牌局流程')
 } finally {
   alice.ws.close()
   bob.ws.close()

@@ -1,0 +1,27 @@
+# 复制为 /etc/livekit.yaml，并将下面两项替换为随机值。
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  use_external_ip: true
+  tcp_port: 7881
+  udp_port: 7882
+
+room:
+  empty_timeout: 300
+  departure_timeout: 30
+  max_participants: 12
+
+# 如需覆盖仅允许常见端口的公司/校园网络，可再为 turn.unizy.online
+# 准备独立 TLS 证书，并启用下面的内置 TURN。证书文件必须允许 livekit 用户读取。
+# turn:
+#   enabled: true
+#   domain: turn.unizy.online
+#   cert_file: /etc/livekit/tls/fullchain.pem
+#   key_file: /etc/livekit/tls/privkey.pem
+#   udp_port: 3478
+#   tls_port: 5349
+
+keys:
+  replace-with-a-random-key: replace-with-a-long-random-secret
