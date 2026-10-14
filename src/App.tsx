@@ -6,7 +6,9 @@ import {
 import { createBotView, decideBotAction, PERSONALITIES, PERSONALITY_ORDER } from './ai'
 import { useGameSound } from './hooks/useGameSound'
 import { usePwaInstall } from './hooks/usePwaInstall'
+import { useStagedCommunityCards } from './hooks/useStagedCommunityCards'
 import { DealAnimations, holeCardDelay, holeDealDuration } from './components/DealAnimations'
+import { BetChipPreview, ChipAnimations } from './components/ChipAnimations'
 import { OnlineApp } from './online/OnlineApp'
 import {
   clearHandHistory, clearStatistics, createSavedHand, historyAsText, loadHandHistory,
@@ -85,12 +87,14 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
   const legal = getLegalActions(game)
   const pot = game.players.reduce((sum, player) => sum + player.totalContribution, 0)
   const showdown = game.phase === 'SETTLEMENT'
+  const stagedBoard = useStagedCommunityCards(game.communityCards, game.handNumber)
+  const visibleShowdown = showdown && !stagedBoard.revealing
   const handVisualKey = `${game.handNumber}:${game.players.flatMap((player) => player.holeCards.map(formatCard)).join('-')}`
   const boardVisualKey = `${game.handNumber}:${game.communityCards.length}`
   const holeDealing = completedHoleDealKey !== handVisualKey
   const boardDealing = game.communityCards.length > 0 && completedBoardDealKey !== boardVisualKey
-  const isDealing = holeDealing || boardDealing
-  const showdownComparisons = useMemo(() => showdown ? buildShowdownComparisons(game) : [], [game, showdown])
+  const isDealing = holeDealing || boardDealing || stagedBoard.revealing
+  const showdownComparisons = useMemo(() => visibleShowdown ? buildShowdownComparisons(game) : [], [game, visibleShowdown])
   const winnerBestFiveCardKeys = useMemo(() => new Set(showdownComparisons.filter((result) => result.isWinner).flatMap((result) => result.bestCards.map(formatCard))), [showdownComparisons])
   const playerBestFiveCardKeys = useMemo(() => new Map(showdownComparisons.map((result) => [result.playerId, new Set(result.bestCards.map(formatCard))])), [showdownComparisons])
   const minAggression = legal.minBet ?? legal.minRaiseTo
@@ -159,13 +163,13 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
   }, [game, playSound])
 
   useEffect(() => {
-    if (game.phase !== 'SETTLEMENT' || hero.chips === 0 || !settings.autoNextHand) return
+    if (!visibleShowdown || hero.chips === 0 || !settings.autoNextHand) return
     const timer = window.setTimeout(() => {
       previousBoardCount.current = 0
       setGame((state) => startNextHand(state))
     }, 10_000)
     return () => window.clearTimeout(timer)
-  }, [game.phase, game.handNumber, hero.chips, settings.autoNextHand, settings.aiSpeed])
+  }, [visibleShowdown, game.handNumber, hero.chips, settings.autoNextHand, settings.aiSpeed])
 
   const seatStyles = useMemo(() => game.players.map((player) => {
     const angle = (-90 + (360 * player.seat) / game.players.length) * Math.PI / 180
@@ -230,14 +234,15 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
         <div className="table-wrap">
           <div className="poker-table">
             <DealAnimations game={game} seatStyles={seatStyles} />
+            <ChipAnimations players={game.players} winners={game.winners} seatStyles={seatStyles} settlement={visibleShowdown} />
             <div className="felt-mark">RIVER<br />ACE</div>
             <div className="board">
               <span className="phase">{PHASE_LABELS[game.phase]}</span>
               <div className="community">
                 {Array.from({ length: 5 }, (_, index) => (
-                  game.communityCards[index]
-                    ? <PlayingCard key={`${game.handNumber}-${index}`} card={game.communityCards[index]}
-                      className={showdown && winnerBestFiveCardKeys.has(formatCard(game.communityCards[index])) ? 'best-five-card' : ''}
+                  stagedBoard.visibleCards[index]
+                    ? <PlayingCard key={`${game.handNumber}-${index}`} card={stagedBoard.visibleCards[index]}
+                      className={`board-dealt board-dealt-${index} ${visibleShowdown && winnerBestFiveCardKeys.has(formatCard(stagedBoard.visibleCards[index])) ? 'best-five-card' : ''}`}
                       delay={(game.phase === 'FLOP' && index < 3) || (game.phase === 'TURN' && index === 3) || (game.phase === 'RIVER' && index === 4) ? 520 + (index < 3 ? index * 150 : 0) : 0} />
                     : <span className="card empty" key={index} />
                 ))}
@@ -249,7 +254,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
             {game.players.map((player, index) => {
               const isCurrent = player.seat === game.currentPlayerSeat
               const winner = game.winners.find((record) => record.playerId === player.id)
-              const reveal = player.isHuman || (showdown && !player.folded)
+              const reveal = player.isHuman || (visibleShowdown && !player.folded)
               return (
                 <article key={player.id}
                   className={`seat ${isCurrent ? 'current' : ''} ${player.folded ? 'folded' : ''} ${winner ? 'winner' : ''}`}
@@ -280,7 +285,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
           <div className="action-panel">
             {isDealing ? (
               <div className="waiting-message"><span>{holeDealing ? '正在依次发出底牌…' : '正在发出公共牌…'}</span><small>发牌完成后开始行动</small></div>
-            ) : showdown && showdownComparisons.length > 0 ? (
+            ) : visibleShowdown && showdownComparisons.length > 0 ? (
               <div className="settlement-summary" role="status">
                 <div className="settlement-results">
                   {showdownComparisons.map((result) => <article className={result.isWinner ? 'winner-result' : 'compared-result'} key={result.playerId}>
@@ -313,7 +318,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
                     <div className="raise-control">
                       <input aria-label="下注金额" type="range" min={minAggression} max={legal.maxTo}
                         step={game.config.smallBlind} value={Math.min(raiseTo, legal.maxTo)} onChange={(event) => setRaiseTo(Number(event.target.value))} />
-                      <output>{Math.min(raiseTo, legal.maxTo)}</output>
+                      <BetChipPreview amount={Math.min(raiseTo, legal.maxTo)} />
                     </div>
                     <div className="quick-bets">
                       <button onClick={() => setRaiseTo(minAggression)}>最小</button><button onClick={() => quickTarget(.5)}>半池</button>
@@ -380,7 +385,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
             <label>牌桌人数<select value={draftSettings.playerCount} onChange={(event) => setDraftSettings({ ...draftSettings, playerCount: Number(event.target.value) })}>
               {Array.from({ length: 9 }, (_, index) => index + 2).map((count) => <option key={count} value={count}>{count} 人</option>)}</select></label>
             <label>初始筹码<select value={draftSettings.startingChips} onChange={(event) => setDraftSettings({ ...draftSettings, startingChips: Number(event.target.value) })}>
-              <option value={1000}>1000</option><option value={2000}>2000</option><option value={5000}>5000</option></select></label>
+              <option value={1000}>1000</option><option value={2000}>2000</option><option value={5000}>5000</option><option value={10000}>10000</option><option value={20000}>20000</option></select></label>
             <label>电脑难度<select value={draftSettings.aiDifficulty} onChange={(event) => setDraftSettings({ ...draftSettings, aiDifficulty: event.target.value as GameSettings['aiDifficulty'] })}>
               <option value="easy">休闲</option><option value="normal">标准</option><option value="hard">认真</option></select></label>
             <label>行动速度<select value={draftSettings.aiSpeed} onChange={(event) => setDraftSettings({ ...draftSettings, aiSpeed: event.target.value as GameSettings['aiSpeed'] })}>

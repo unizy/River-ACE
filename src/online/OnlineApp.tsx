@@ -5,15 +5,17 @@ import type { ClientMessage, LobbyRoom, OnlineUser, ReplayDetail, ReplaySummary,
 import { VoiceControls } from '../voice/VoiceControls'
 import { useRoomVoice } from '../voice/useRoomVoice'
 import { QuickMessageControls } from './QuickMessageControls'
+import { BetChipPreview, ChipAnimations } from '../components/ChipAnimations'
 import { QUICK_MESSAGE_AUDIO_ROOT, QUICK_MESSAGE_BY_ID, type QuickMessageId } from './quickMessages'
+import { useStagedCommunityCards } from '../hooks/useStagedCommunityCards'
 import './online.css'
 
 const TOKEN_KEY = 'river-ace-online-token'
 
-function CardView({ card, hidden, highlighted, winner }: { card?: Card; hidden?: boolean; highlighted?: boolean; winner?: boolean }) {
+function CardView({ card, hidden, highlighted, winner, className = '' }: { card?: Card; hidden?: boolean; highlighted?: boolean; winner?: boolean; className?: string }) {
   if (hidden || !card) return <span className={`card card-back ${winner ? 'winner-hole-card' : ''}`}>R</span>
   const red = card.suit === 'hearts' || card.suit === 'diamonds'
-  return <span className={`card ${red ? 'red' : ''} ${highlighted ? winner ? 'best-five-card' : 'compared-five-card' : ''} ${winner ? 'winner-hole-card' : ''}`}>{formatCard(card)}</span>
+  return <span className={`card ${red ? 'red' : ''} ${highlighted ? winner ? 'best-five-card' : 'compared-five-card' : ''} ${winner ? 'winner-hole-card' : ''} ${className}`}>{formatCard(card)}</span>
 }
 
 function apiHeaders(token?: string) {
@@ -266,12 +268,14 @@ function OnlineRoom(props: OnlineRoomProps) {
   const game = room.game
   const legal = room.legalActions
   const current = game?.players.find((player) => player.seat === game.currentPlayerSeat)
+  const stagedBoard = useStagedCommunityCards(game?.communityCards ?? [], game?.handNumber ?? 0)
+  const visibleShowdown = game?.phase === 'SETTLEMENT' && !stagedBoard.revealing
   const winnerIds = new Set(game?.winners.map((winner) => winner.playerId) ?? [])
   const winnerBestKeys = new Set(game?.winners.flatMap((winner) => winner.hand?.cards.map(formatCard) ?? []) ?? [])
   const comparisons = useMemo(() => {
-    if (!game || game.phase !== 'SETTLEMENT') return []
+    if (!game || !visibleShowdown) return []
     try { return buildShowdownComparisons(game as unknown as GameState) } catch { return [] }
-  }, [game])
+  }, [game, visibleShowdown])
   const playerBestKeys = useMemo(() => new Map(comparisons.map((result) => [result.playerId, new Set(result.bestCards.map(formatCard))])), [comparisons])
   const seatStyles = useMemo(() => (game?.players ?? room.players).map((player) => {
     const count = game?.players.length ?? room.players.length
@@ -310,28 +314,30 @@ function OnlineRoom(props: OnlineRoomProps) {
         : <p className="waiting-copy">等待房主开始牌局…</p>}
     </section> : <section className="online-game-grid">
       <div className="table-wrap"><div className="poker-table online-table">
+        <ChipAnimations players={game.players} winners={game.winners} seatStyles={seatStyles} settlement={visibleShowdown} />
+        <div className="deck-stack"><span>R</span><span>R</span><span>R</span></div>
         <div className="felt-mark">RIVER<br />ACE</div>
         <div className="board"><span className="phase">{game.phase === 'SETTLEMENT' ? '结算' : game.phase}</span>
-          <div className="community">{Array.from({ length: 5 }, (_, index) => game.communityCards[index]
-            ? <CardView key={index} card={game.communityCards[index]} highlighted={winnerBestKeys.has(formatCard(game.communityCards[index]))} />
+          <div className="community">{Array.from({ length: 5 }, (_, index) => stagedBoard.visibleCards[index]
+            ? <CardView key={`${game.handNumber}-${index}`} card={stagedBoard.visibleCards[index]} className={`board-dealt board-dealt-${index}`} highlighted={visibleShowdown && winnerBestKeys.has(formatCard(stagedBoard.visibleCards[index]))} />
             : <span className="card empty" key={index} />)}</div>
           <strong>底池 {game.players.reduce((sum, player) => sum + player.totalContribution, 0)}</strong></div>
         {game.players.map((player, index) => <article key={player.id} className={`seat ${player.seat === game.currentPlayerSeat ? 'current' : ''} ${player.folded ? 'folded' : ''} ${winnerIds.has(player.id) ? 'winner' : ''} ${voice.speakingIds.has(player.id) ? 'speaking' : ''}`} style={seatStyles[index]}>
           {props.quickMessages[player.id] && <span className="quick-message-bubble" key={props.quickMessages[player.id].sentAt}>{QUICK_MESSAGE_BY_ID[props.quickMessages[player.id].messageId].text}</span>}
           <div className="hole-cards">{player.hasCards ? [0, 1].map((cardIndex) => <CardView key={cardIndex} card={player.holeCards[cardIndex]}
-            hidden={!player.holeCards[cardIndex]} winner={winnerIds.has(player.id)} highlighted={player.holeCards[cardIndex] ? playerBestKeys.get(player.id)?.has(formatCard(player.holeCards[cardIndex])) : false} />) : null}</div>
+            hidden={!player.holeCards[cardIndex] || (game.phase === 'SETTLEMENT' && !visibleShowdown && player.id !== user.id)} winner={visibleShowdown && winnerIds.has(player.id)} highlighted={visibleShowdown && player.holeCards[cardIndex] ? playerBestKeys.get(player.id)?.has(formatCard(player.holeCards[cardIndex])) : false} />) : null}</div>
           <div className="seat-name"><strong>{player.isBot ? '🤖 ' : ''}{player.name}{player.id === user.id ? '（你）' : ''}</strong><span>{player.chips}</span></div>
           <div className="badges">{player.seat === game.dealerSeat && <b>D</b>}{player.seat === game.smallBlindSeat && <b>SB</b>}{player.seat === game.bigBlindSeat && <b>BB</b>}
             {!player.connected && <em>断线</em>}{player.allIn && <em>全下</em>}{player.folded && <em>弃牌</em>}{player.streetContribution > 0 && <i>{player.streetContribution}</i>}</div>
         </article>)}</div>
-        <div className="action-panel online-actions">{game.phase === 'SETTLEMENT' ? <div className="settlement-summary">
+        <div className="action-panel online-actions">{visibleShowdown ? <div className="settlement-summary">
           <div className="settlement-results">{comparisons.map((result) => <article className={result.isWinner ? 'winner-result' : 'compared-result'} key={result.playerId}><span className="result-kicker">{result.isWinner ? `赢家 · ${result.potNames.join('、') || '本局胜者'}` : '未获胜 · 摊牌对比'}</span>
             <div className="result-heading"><strong>{result.playerName}</strong><b>{result.isWinner ? `+${result.amount}` : '未获奖'}</b><h3>{result.categoryName}</h3></div><p>{result.description}</p>
             {result.bestCards.length > 0 && <div className="result-best-five">{result.bestCards.map((card) => <span key={formatCard(card)}>{formatCard(card)}</span>)}</div>}<small>{result.reason}</small></article>)}</div>
           <div className="settlement-footer"><span><i />已列出所有摊牌玩家的最佳五张，赢家用金色突出</span><b>下一局将在 {Math.ceil(props.nextHandRemaining / 1000)} 秒后开始</b></div></div>
           : room.viewerRole === 'spectator' ? <div className="waiting-message"><span>正在观战</span><small>{current?.name ?? '玩家'} 行动中</small></div>
             : legal?.actions.length ? <><div className="online-turn"><strong>轮到你行动</strong><span>{Math.ceil(remaining / 1000)} 秒</span><progress max={25_000} value={remaining} /></div>
-              {minAmount !== null && minAmount !== undefined && <div className="raise-control"><input aria-label="下注金额" type="range" min={minAmount} max={legal.maxTo} step={10} value={Math.min(raiseTo, legal.maxTo)} onChange={(event) => setRaiseTo(Number(event.target.value))} /><output>{Math.min(raiseTo, legal.maxTo)}</output></div>}
+              {minAmount !== null && minAmount !== undefined && <div className="raise-control"><input aria-label="下注金额" type="range" min={minAmount} max={legal.maxTo} step={10} value={Math.min(raiseTo, legal.maxTo)} onChange={(event) => setRaiseTo(Number(event.target.value))} /><BetChipPreview amount={Math.min(raiseTo, legal.maxTo)} /></div>}
               <div className="action-buttons">{legal.actions.map((type) => <button key={type} className={type === 'fold' ? 'danger' : type === 'allIn' ? 'gold' : ''} onClick={() => act(type)}>
                 {type === 'call' ? `跟注 ${Math.min(legal.toCall, game.players.find((player) => player.id === user.id)?.chips ?? 0)}` : type === 'bet' || type === 'raise' ? `${type === 'bet' ? '下注' : '加注'}到 ${Math.min(raiseTo, legal.maxTo)}` : ({ fold: '弃牌', check: '过牌', allIn: '全下' } as Record<string, string>)[type]}</button>)}</div></>
               : <div className="waiting-message"><span>{current?.name ?? '牌局'} 正在行动</span><small>{Math.ceil(remaining / 1000)} 秒 · 断线后会自动过牌或弃牌</small></div>}</div>

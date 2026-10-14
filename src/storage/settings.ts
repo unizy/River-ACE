@@ -28,7 +28,7 @@ interface StorageLike {
 function normalized(value: Partial<GameSettings>): GameSettings {
   return {
     playerCount: Math.max(2, Math.min(10, Math.round(value.playerCount ?? DEFAULT_SETTINGS.playerCount))),
-    startingChips: [1000, 2000, 5000].includes(value.startingChips ?? 0)
+    startingChips: [1000, 2000, 5000, 10000, 20000].includes(value.startingChips ?? 0)
       ? value.startingChips!
       : DEFAULT_SETTINGS.startingChips,
     aiDifficulty: ['easy', 'normal', 'hard'].includes(value.aiDifficulty ?? '')
