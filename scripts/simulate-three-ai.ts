@@ -2,8 +2,9 @@ import { createBotView, decideBotAction, PERSONALITIES } from '../src/ai/index'
 import { createGame, performAction, seededRandom, startHand, type BotPersonality } from '../src/game/index'
 
 const hands = Number(process.argv[2] ?? 10_000)
+const seed = Number(process.argv[3] ?? 20261014)
 const personalities: BotPersonality[] = ['tight', 'aggressive', 'calling']
-const random = seededRandom(20261014)
+const random = seededRandom(seed)
 const results = Object.fromEntries(personalities.map((id) => [id, {
   id, hands: 0, outrightWins: 0, tiedWins: 0, winShares: 0, netChips: 0, chipsWon: 0, invested: 0,
 }])) as Record<BotPersonality, { id: BotPersonality; hands: number; outrightWins: number; tiedWins: number; winShares: number; netChips: number; chipsWon: number; invested: number }>
@@ -39,4 +40,4 @@ for (let hand = 0; hand < hands; hand += 1) {
   }
 }
 
-console.log(JSON.stringify({ hands, seed: 20261014, difficulty: 'normal', startingChips: 10_000, results: personalities.map((id) => results[id]) }, null, 2))
+console.log(JSON.stringify({ hands, seed, difficulty: 'normal', startingChips: 10_000, results: personalities.map((id) => results[id]) }, null, 2))
