@@ -92,7 +92,7 @@ pnpm start
 | --- | ---: | --- |
 | `PORT` | `8787` | 服务监听端口 |
 | `TURN_MS` | `25000` | 真人每次行动时限（毫秒） |
-| `NEXT_HAND_MS` | `8000` | 下一手牌等待时间（毫秒） |
+| `NEXT_HAND_MS` | `12000` | 下一手牌等待时间（毫秒） |
 | `DISCONNECT_GRACE_MS` | `30000` | 断线重连宽限时间（毫秒） |
 | `RIVER_ACE_DATA` | `server/data/store.json` | 服务端数据文件路径 |
 | `LIVEKIT_URL` | — | 浏览器连接的语音地址，如 `wss://voice.unizy.online` |

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  buildWinnerExplanations, createGame, evaluateBestHand, formatCard, getLegalActions, performAction, startNextHand,
+  buildShowdownComparisons, createGame, evaluateBestHand, formatCard, getLegalActions, performAction, startNextHand,
   type Card, type GameState, type LegalActionType, type PlayerAction,
 } from './game'
 import { createBotView, decideBotAction, PERSONALITIES, PERSONALITY_ORDER } from './ai'
@@ -90,8 +90,9 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
   const holeDealing = completedHoleDealKey !== handVisualKey
   const boardDealing = game.communityCards.length > 0 && completedBoardDealKey !== boardVisualKey
   const isDealing = holeDealing || boardDealing
-  const winnerExplanations = useMemo(() => showdown ? buildWinnerExplanations(game) : [], [game, showdown])
-  const bestFiveCardKeys = useMemo(() => new Set(winnerExplanations.flatMap((result) => result.bestCards.map(formatCard))), [winnerExplanations])
+  const showdownComparisons = useMemo(() => showdown ? buildShowdownComparisons(game) : [], [game, showdown])
+  const winnerBestFiveCardKeys = useMemo(() => new Set(showdownComparisons.filter((result) => result.isWinner).flatMap((result) => result.bestCards.map(formatCard))), [showdownComparisons])
+  const playerBestFiveCardKeys = useMemo(() => new Map(showdownComparisons.map((result) => [result.playerId, new Set(result.bestCards.map(formatCard))])), [showdownComparisons])
   const minAggression = legal.minBet ?? legal.minRaiseTo
   const heroHand = !hero.folded && hero.holeCards.length + game.communityCards.length >= 5
     ? evaluateBestHand([...hero.holeCards, ...game.communityCards])
@@ -162,7 +163,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
     const timer = window.setTimeout(() => {
       previousBoardCount.current = 0
       setGame((state) => startNextHand(state))
-    }, settings.aiSpeed === 'fast' ? 3800 : settings.aiSpeed === 'slow' ? 7500 : 6000)
+    }, 10_000)
     return () => window.clearTimeout(timer)
   }, [game.phase, game.handNumber, hero.chips, settings.autoNextHand, settings.aiSpeed])
 
@@ -236,7 +237,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
                 {Array.from({ length: 5 }, (_, index) => (
                   game.communityCards[index]
                     ? <PlayingCard key={`${game.handNumber}-${index}`} card={game.communityCards[index]}
-                      className={showdown && bestFiveCardKeys.has(formatCard(game.communityCards[index])) ? 'best-five-card' : ''}
+                      className={showdown && winnerBestFiveCardKeys.has(formatCard(game.communityCards[index])) ? 'best-five-card' : ''}
                       delay={(game.phase === 'FLOP' && index < 3) || (game.phase === 'TURN' && index === 3) || (game.phase === 'RIVER' && index === 4) ? 520 + (index < 3 ? index * 150 : 0) : 0} />
                     : <span className="card empty" key={index} />
                 ))}
@@ -256,7 +257,7 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
                   <div className="hole-cards">
                     {player.holeCards.map((card, cardIndex) => (
                       <PlayingCard key={`${game.handNumber}-${cardIndex}-${reveal}`} card={card} hidden={!reveal}
-                        className={`${winner ? 'winner-hole-card' : ''} ${showdown && bestFiveCardKeys.has(formatCard(card)) ? 'best-five-card' : ''}`}
+                        className={`${winner ? 'winner-hole-card' : ''} ${showdown && playerBestFiveCardKeys.get(player.id)?.has(formatCard(card)) ? winner ? 'best-five-card' : 'compared-five-card' : ''}`}
                         delay={showdown && !player.isHuman ? cardIndex * 160 : holeCardDelay(game, player.seat, cardIndex) + 400} />
                     ))}
                   </div>
@@ -279,23 +280,24 @@ function SinglePlayerApp({ onOpenOnline }: { onOpenOnline: () => void }) {
           <div className="action-panel">
             {isDealing ? (
               <div className="waiting-message"><span>{holeDealing ? '正在依次发出底牌…' : '正在发出公共牌…'}</span><small>发牌完成后开始行动</small></div>
-            ) : showdown && winnerExplanations.length > 0 ? (
+            ) : showdown && showdownComparisons.length > 0 ? (
               <div className="settlement-summary" role="status">
                 <div className="settlement-results">
-                  {winnerExplanations.map((result) => <article key={result.playerId}>
-                    <span className="result-kicker">{result.potNames.join('、') || '本局结果'}</span>
-                    <div className="result-heading"><strong>{result.playerName}</strong><b>+{result.amount}</b><h3>{result.categoryName}</h3></div>
+                  {showdownComparisons.map((result) => <article className={result.isWinner ? 'winner-result' : 'compared-result'} key={result.playerId}>
+                    <span className="result-kicker">{result.isWinner ? `赢家 · ${result.potNames.join('、') || '本局胜者'}` : '未获胜 · 摊牌对比'}</span>
+                    <div className="result-heading"><strong>{result.playerName}</strong><b>{result.isWinner ? `+${result.amount}` : '未获奖'}</b><h3>{result.categoryName}</h3></div>
                     <p>{result.description}</p>
+                    {result.bestCards.length > 0 && <div className="result-best-five">{result.bestCards.map((card) => <span key={formatCard(card)}>{formatCard(card)}</span>)}</div>}
                     <small>{result.reason}</small>
                   </article>)}
                 </div>
                 <div className="settlement-footer">
-                  {bestFiveCardKeys.size > 0 && <span><i />牌桌上抬高并描金的牌组成最佳五张</span>}
+                  {showdownComparisons.some((result) => result.bestCards.length > 0) && <span><i />已列出所有摊牌玩家的最佳五张，赢家用金色突出</span>}
                   {hero.chips === 0
                     ? <b>筹码已用尽。点击“新牌局”重新开始。</b>
                     : !settings.autoNextHand
                       ? <button onClick={() => setGame((state) => startNextHand(state))}>开始下一局</button>
-                      : <b>下一局即将开始…</b>}
+                      : <b>下一局将在 10 秒后自动开始</b>}
                 </div>
               </div>
             ) : hero.chips === 0 && game.phase === 'SETTLEMENT' ? (

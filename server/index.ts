@@ -13,7 +13,7 @@ import { createVoiceToken, deleteVoiceRoom, removeVoiceParticipant, voiceIsConfi
 const PORT = Number(process.env.PORT ?? 8787)
 const TURN_MS = Number(process.env.TURN_MS ?? 25_000)
 const RECONNECT_FOLD_MS = 2_500
-const NEXT_HAND_MS = Number(process.env.NEXT_HAND_MS ?? 8_000)
+const NEXT_HAND_MS = Number(process.env.NEXT_HAND_MS ?? 12_000)
 const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS ?? 30_000)
 const distRoot = resolve('dist')
 
@@ -37,6 +37,7 @@ interface Room {
   spectators: Map<string, OnlineUser>
   game?: GameState
   actionDeadline?: number
+  nextHandDeadline?: number
   turnTimer?: NodeJS.Timeout
   nextHandTimer?: NodeJS.Timeout
   savedSettlement?: string
@@ -219,6 +220,7 @@ function roomView(room: Room, viewerId: string, role: 'player' | 'spectator'): R
       ? getLegalActions(room.game, viewerSeat)
       : undefined,
     actionDeadline: room.actionDeadline,
+    nextHandDeadline: room.nextHandDeadline,
   }
 }
 
@@ -318,12 +320,14 @@ function beginNextHand(room: Room) {
     return
   }
   const retained = room.players.filter((member) => !member.leaving)
+  room.nextHandDeadline = undefined
   room.players = retained
   ensureHost(room)
   if (retained.length < 2 || !room.game) {
     room.status = 'waiting'
     room.game = undefined
     room.actionDeadline = undefined
+    room.nextHandDeadline = undefined
     broadcastRoom(room)
     broadcastLobby()
     return
@@ -347,6 +351,7 @@ function afterGameChange(room: Room) {
   if (room.game?.phase === 'SETTLEMENT') {
     if (room.turnTimer) clearTimeout(room.turnTimer)
     room.actionDeadline = undefined
+    room.nextHandDeadline = Date.now() + NEXT_HAND_MS
     recordSettlement(room)
     broadcastRoom(room)
     broadcastLobby()

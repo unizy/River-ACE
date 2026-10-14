@@ -29,6 +29,10 @@ export interface WinnerExplanation {
   potNames: string[]
 }
 
+export interface ShowdownComparison extends WinnerExplanation {
+  isWinner: boolean
+}
+
 export function buildWinnerExplanations(state: GameState): WinnerExplanation[] {
   return state.winners.map((winner) => {
     const player = state.players.find((candidate) => candidate.id === winner.playerId)!
@@ -67,6 +71,34 @@ export function buildWinnerExplanations(state: GameState): WinnerExplanation[] {
       playerId: winner.playerId, playerName: player.name, amount: winner.amount,
       categoryName: winner.hand.categoryName, description: describeHand(winner.hand),
       reason, bestCards: winner.hand.cards, potNames,
+    }
+  })
+}
+
+export function buildShowdownComparisons(state: GameState): ShowdownComparison[] {
+  const winners = buildWinnerExplanations(state)
+  if (state.communityCards.length < 5) return winners.map((result) => ({ ...result, isWinner: true }))
+
+  const winnerById = new Map(winners.map((result) => [result.playerId, result]))
+  const ranked = state.players
+    .filter((player) => !player.folded && player.holeCards.length === 2)
+    .map((player) => ({ player, hand: evaluateBestHand([...player.holeCards, ...state.communityCards]) }))
+    .sort((left, right) => compareHandRanks(right.hand, left.hand))
+  const strongestWinner = ranked.find(({ player }) => winnerById.has(player.id))
+
+  return ranked.map(({ player, hand }) => {
+    const winner = winnerById.get(player.id)
+    if (winner) return { ...winner, isWinner: true }
+    let reason = '未赢得本局底池。'
+    if (strongestWinner) {
+      reason = hand.category !== strongestWinner.hand.category
+        ? `${strongestWinner.player.name} 的${strongestWinner.hand.categoryName}牌型级别高于本手的${hand.categoryName}。`
+        : `同为${hand.categoryName}，关键点数 ${hand.value.slice(1).map(rankName).join('、')} 未超过 ${strongestWinner.player.name} 的 ${strongestWinner.hand.value.slice(1).map(rankName).join('、')}。`
+    }
+    return {
+      playerId: player.id, playerName: player.name, amount: 0, isWinner: false,
+      categoryName: hand.categoryName, description: describeHand(hand), reason,
+      bestCards: hand.cards, potNames: [],
     }
   })
 }

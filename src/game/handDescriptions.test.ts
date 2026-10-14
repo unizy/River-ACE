@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCard } from './cards'
 import { createGame } from './engine'
-import { buildWinnerExplanations, describeHand } from './handDescriptions'
+import { buildShowdownComparisons, buildWinnerExplanations, describeHand } from './handDescriptions'
 import { evaluateBestHand } from './handEvaluator'
 
 const cards = (value: string) => value.split(' ').map(parseCard)
@@ -27,6 +27,15 @@ describe('获胜牌型说明', () => {
     expect(explanation.bestCards).toHaveLength(5)
     expect(explanation.reason).toContain('牌型级别高于')
     expect(explanation.description).toContain('A 三条带 7 对子')
+
+    const comparison = buildShowdownComparisons(state)
+    expect(comparison).toHaveLength(2)
+    expect(comparison.map((result) => [result.playerId, result.isWinner, result.categoryName])).toEqual([
+      ['hero', true, '葫芦'],
+      ['bot', false, '两对'],
+    ])
+    expect(comparison[1].bestCards).toHaveLength(5)
+    expect(comparison[1].reason).toContain('牌型级别高于')
   })
 
   it('弃牌获胜时明确说明无需摊牌', () => {

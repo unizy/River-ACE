@@ -66,6 +66,7 @@ export interface RoomView {
   game?: OnlineGameView
   legalActions?: LegalActions
   actionDeadline?: number
+  nextHandDeadline?: number
 }
 
 export interface VoiceTokenResponse {
